@@ -1,8 +1,18 @@
 from typing import Any
 
+import pytest
 from test_helpers.tools import addition
 
-from inspect_ai.tool import ToolDef, ToolParam, ToolParams, tool_with
+from inspect_ai.tool import (
+    Content,
+    ToolCall,
+    ToolCallView,
+    ToolDef,
+    ToolParam,
+    ToolParams,
+    tool_with,
+)
+from inspect_ai.tool._tool_call import ToolCallModelInputHints
 
 NAME = "my_addition"
 DESCRIPTION = "my description"
@@ -68,3 +78,47 @@ def test_tool_with_keeps_earlier_tool_with_changes() -> None:
     assert tdef.description == DESCRIPTION
     assert tdef.parameters.properties["x"].description == X_DESCRIPTION
     assert tdef.parameters.properties["y"].description == Y_DESCRIPTION
+
+
+def _viewer(call: ToolCall) -> ToolCallView:
+    return ToolCallView()
+
+
+def _model_input(
+    message_index: int,
+    message_total: int,
+    content: str | list[Content],
+    hints: ToolCallModelInputHints,
+) -> str | list[Content]:
+    return content
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"parallel": True, "viewer": _viewer},
+        {"parallel": True, "model_input": _model_input},
+        {"viewer": _viewer, "model_input": _model_input},
+        {"parallel": True, "viewer": _viewer, "model_input": _model_input},
+    ],
+    ids=[
+        "parallel+viewer",
+        "parallel+model_input",
+        "viewer+model_input",
+        "all-three",
+    ],
+)
+def test_tool_with_applies_each_attribute(kwargs: dict[str, Any]) -> None:
+    tdef = ToolDef(tool_with(addition(), **kwargs))
+
+    assert tdef.parallel == kwargs.get("parallel", False)
+    assert tdef.viewer is kwargs.get("viewer")
+    assert tdef.model_input is kwargs.get("model_input")
+
+
+def test_tool_with_applies_parallel_false_with_viewer() -> None:
+    tool = tool_with(addition(), parallel=True)
+    tdef = ToolDef(tool_with(tool, parallel=False, viewer=_viewer))
+
+    assert tdef.parallel is False
+    assert tdef.viewer is _viewer
